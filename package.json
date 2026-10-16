@@ -5,11 +5,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/gone1724/dsh-listener.git"
+    "url": "git+https://github.com/QR-0W/dsh-listener.git"
   },
-  "homepage": "https://github.com/gone1724/dsh-listener#readme",
+  "homepage": "https://github.com/QR-0W/dsh-listener#readme",
   "bugs": {
-    "url": "https://github.com/gone1724/dsh-listener/issues"
+    "url": "https://github.com/QR-0W/dsh-listener/issues"
   },
   "publishConfig": {
     "access": "public",
@@ -58,6 +58,7 @@
     "client": {
       "platform": "web",
       "inject": [
+        "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-ui-conversation",
         "@deepseek-ai/dsh-client-ui-settings",
         "@deepseek-ai/dsh-client-ui-renderer"
@@ -72,6 +73,7 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.4",
     "@deepseek-ai/dsh-client-connection": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-client-locale": "0.2.0-rc.2",
     "@deepseek-ai/dsh-client-ui-conversation": "0.2.0-rc.2",
     "@deepseek-ai/dsh-client-ui-renderer": "0.2.0-rc.2",
     "@deepseek-ai/dsh-client-ui-session": "0.2.0-rc.2",

@@ -33,7 +33,9 @@ async function components() {
   vi.stubGlobal('document', { createElement: () => ({ remove: vi.fn() }), head: { append: vi.fn() }, addEventListener: vi.fn(), removeEventListener: vi.fn() })
   const slots = new Map<string, any>()
   const { apply } = await import('../src/client/index.tsx')
-  apply({ effect: (fn: any) => fn(), slots: { inject: (_name: string, fn: any) => fn(), register: (options: any, render: any) => slots.set(options.name, render) } } as any)
+  const localeSnapshot = { active: 'zh', locales: [], revision: 0 }
+  const locale = { register: () => () => {}, getSnapshot: () => localeSnapshot, subscribe: () => () => {}, bind: () => (key: string) => key }
+  apply({ locale, effect: (fn: any) => fn(), slots: { inject: (_name: string, fn: any) => fn(), register: (options: any, render: any) => slots.set(options.name, render) } } as any)
   return slots
 }
 const button = (label: string) => renderer!.root.findAllByType('button').find(node => node.children.join('') === label)!
