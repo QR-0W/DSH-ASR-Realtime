@@ -10,15 +10,16 @@ import { settings } from './settings.ts'
 import { HotkeyCapture, HotkeyGesture, matches, releasesBinding } from './hotkey.ts'
 import { appendTranscript } from './draft.ts'
 import { VoiceSession } from './session.ts'
+import { captionStyle, LiveCaption, registerCaptionLocale } from './caption.tsx'
 
-export const inject = ['slots']
+export const inject = ['slots', 'locale']
 const sessions = new Set<VoiceSession>()
 let owner: VoiceSession | undefined
 const pendingTranscripts = new Map<string, string>()
 const style = `
-.listener-button{border:0;border-radius:8px;padding:7px;display:inline-flex;align-items:center;gap:5px;color:#858585;background:transparent;cursor:pointer;font:inherit}
-.listener-button:hover{background:var(--dsw-alias-bg-layer-2,#8882)}.listener-button:disabled{opacity:.5;cursor:default}
-.listener-button[data-recording=true]{color:#16a34a;background:#16a34a18}.listener-button:focus-visible,.listener-settings input:focus-visible,.listener-settings select:focus-visible{outline:2px solid #16a34a;outline-offset:2px}
+.listener-button{border:0;border-radius:8px;padding:7px;display:inline-flex;align-items:center;gap:5px;color:var(--dsw-alias-label-secondary);background:transparent;cursor:pointer;font:inherit}
+.listener-button:hover{background:var(--dsw-alias-bg-layer-2)}.listener-button:disabled{opacity:.5;cursor:default}
+.listener-button[data-recording=true]{color:var(--dsw-alias-state-success-primary);background:var(--dsw-alias-bg-layer-2)}.listener-button:focus-visible,.listener-settings input:focus-visible,.listener-settings select:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
 .listener-control{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .listener-settings{max-width:480px;padding:12px;color:inherit;font:inherit;font-size:13px}.listener-settings h2{margin:0 0 6px;font-size:16px}.listener-settings p{line-height:1.5;opacity:.8;margin:8px 0}.listener-settings details{margin:10px 0;font-size:12px;opacity:.85}
 .listener-field{display:grid;grid-template-columns:135px 1fr;gap:12px;align-items:center;margin:16px 0}.listener-field input:not([type=checkbox]),.listener-field select{box-sizing:border-box;width:100%;padding:9px 10px;color:inherit;background:var(--dsw-alias-bg-layer-2,#8881);border:1px solid #8885;border-radius:7px;font:inherit}.listener-field input[type=checkbox]{width:18px;height:18px;accent-color:#16a34a}
@@ -35,7 +36,7 @@ function Mic() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0014 0v-2M12 19v3M8 22h8"/></svg>
 }
 
-function VoiceButton({ sessionId, useInput, inputActions }: PropsRuntime<'conversation.input.right'>) {
+function VoiceButton({ sessionId, useInput, inputActions, locale }: PropsRuntime<'conversation.input.right'> & { locale: Context['locale'] }) {
   const input = useInput((value: InputState) => value)
   const config = useSyncExternalStore(settings.subscribe, settings.getSnapshot)
   const latest = useRef({ input, config, inputActions })
@@ -113,6 +114,7 @@ function VoiceButton({ sessionId, useInput, inputActions }: PropsRuntime<'conver
       disabled={state.phase === 'finishing' || input.phase !== 'plain'}
       onContextMenu={event => { event.preventDefault(); if (!session.busy()) setShowSettings(true) }}
       onClick={() => { if (!config?.configured) setShowSettings(true); else if (session.active()) operations.current.finish(); else operations.current.begin() }}><Mic /></button>
+    <LiveCaption state={state} anchor={button} autoSend={start.current.autoSend} locale={locale}/>
     {showSettings && <SettingsDialog onClose={() => setShowSettings(false)}/>}
     {pending && !notice && <button type="button" className="listener-action" onClick={() => setNotice('上次识别文字尚未处理')}>恢复识别文字</button>}
     {(notice && !['语音已追加', '已提交发送'].includes(notice)) && <MessageDialog message={notice} onClose={() => setNotice('')} onSettings={() => { setNotice(''); setShowSettings(true) }}>
@@ -319,11 +321,12 @@ function VoiceSettings() {
 
 /** Same slot registration approach as the MIT Harness experimental voice UI. */
 export function apply(ctx: Context): void {
+  registerCaptionLocale(ctx)
   ctx.effect(() => {
-    const sheet = document.createElement('style'); sheet.textContent = style; document.head.append(sheet)
+    const sheet = document.createElement('style'); sheet.textContent = style + captionStyle; document.head.append(sheet)
     return () => sheet.remove()
   })
-  ctx.slots.inject('conversation.input.right', () => ctx.slots.register({ name: 'conversation.input.right', id: 'dsh-listener', order: 90 }, props => <VoiceButton key={props.sessionId} {...props}/>))
+  ctx.slots.inject('conversation.input.right', () => ctx.slots.register({ name: 'conversation.input.right', id: 'dsh-listener', order: 90 }, props => <VoiceButton key={props.sessionId} {...props} locale={ctx.locale}/>))
   // Bundle configuration is keyed by package name, as in dshmarket. Keep this
   // optional: a host without the plugin page can still use the mic's dialog.
   const bundleSlots = ctx.slots as unknown as {
