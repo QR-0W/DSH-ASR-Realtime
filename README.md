@@ -2,13 +2,13 @@
 
 DeepSeek Harness 云端实时语音输入插件。按住右 Alt 说话，松开停止；识别文字追加到当前会话草稿，默认不发送。
 
-当前版本 **0.4.0**。安装与检查更新统一使用 npm 默认渠道。兼容 Harness **0.2.0-rc.2**、Node.js **22.19+（22.x）或 24+**，推荐 Chrome / Edge。更新记录见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本 **0.4.1**。安装与检查更新统一使用 npm 默认渠道。兼容 Harness **0.2.1-rc.1**、Node.js **22.19+（22.x）或 24+**，推荐 Chrome / Edge。更新记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## Fork 说明
 
 本仓库是 [gone1724/dsh-listener](https://github.com/gone1724/dsh-listener) 的个人 Fork，新增录音期间的实时悬浮字幕。字幕定位在麦克风上方，不占据聊天区域的布局空间；停止录音后仍沿用原有草稿追加和自动发送设置。
 
-Fork 的改动尚未发布到 npm，下方 npm 安装命令仍安装上游版本。使用 Fork 时，在本地克隆本仓库并执行开发章节中的构建命令，再通过 Harness 插件管理安装本地仓库目录。内置更新器仍查询上游 npm 包，请勿用它覆盖本地 Fork。
+Fork 的改动尚未发布到 npm，下方 npm 安装命令仍安装上游版本；0.4.1 起本 Fork 适配 Harness 0.2.1-rc.1。使用 Fork 时，在本地克隆本仓库并执行开发章节中的构建命令，再通过 Harness 插件管理安装本地仓库目录。内置更新器仍查询上游 npm 包，请勿用它覆盖本地 Fork。
 
 ## 安装
 
@@ -17,7 +17,7 @@ Fork 的改动尚未发布到 npm，下方 npm 安装命令仍安装上游版本
 命令行安装：
 
 ```powershell
-npm install -g @deepseek-ai/dsh@0.2.0-rc.2
+npm install -g @deepseek-ai/dsh@0.2.1-rc.1
 dsh plugin --profile web add dsh-listener
 dsh web
 ```
