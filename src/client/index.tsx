@@ -114,7 +114,7 @@ function VoiceButton({ sessionId, useInput, inputActions, locale }: PropsRuntime
       disabled={state.phase === 'finishing' || input.phase !== 'plain'}
       onContextMenu={event => { event.preventDefault(); if (!session.busy()) setShowSettings(true) }}
       onClick={() => { if (!config?.configured) setShowSettings(true); else if (session.active()) operations.current.finish(); else operations.current.begin() }}><Mic /></button>
-    <LiveCaption state={state} anchor={button} autoSend={start.current.autoSend} locale={locale}/>
+    {config?.showLiveCaption && <LiveCaption state={state} anchor={button} autoSend={start.current.autoSend} locale={locale}/>}
     {showSettings && <SettingsDialog onClose={() => setShowSettings(false)}/>}
     {pending && !notice && <button type="button" className="listener-action" onClick={() => setNotice('上次识别文字尚未处理')}>恢复识别文字</button>}
     {(notice && !['语音已追加', '已提交发送'].includes(notice)) && <MessageDialog message={notice} onClose={() => setNotice('')} onSettings={() => { setNotice(''); setShowSettings(true) }}>
@@ -297,6 +297,8 @@ function VoiceSettings() {
     <div className="listener-field"><span>快捷键</span><div className="listener-shortcut"><input aria-label="快捷键" value={form.hotkey} readOnly/><button type="button" className="listener-action" onClick={() => setCapture(!capture)}>{capture ? '请按快捷键' : '录入快捷键'}</button></div></div>
     <label className="listener-field"><span>录音模式</span><select value={form.mode} onChange={e => update('mode', e.target.value as Preferences['mode'])}><option value="hold">长按：按下开始，松开停止</option><option value="toggle">点按：再次按下停止</option></select></label>
     <label className="listener-field"><span>自动发送</span><input type="checkbox" checked={form.autoSend} onChange={e => update('autoSend', e.target.checked)}/></label>
+    <label className="listener-field"><span>显示实时字幕</span><input aria-label="显示实时字幕" type="checkbox" checked={form.showLiveCaption} onChange={e => update('showLiveCaption', e.target.checked)}/></label>
+    <p className="listener-hint">关闭后只隐藏悬浮字幕，不影响录音、识别或草稿。</p>
     <div className="listener-actions">
       <button className="listener-action listener-primary" type="button" disabled={busy || !saved?.writable} onClick={saveConfiguration}>{saving ? '保存中…' : '保存'}</button>
       <button type="button" className="listener-action" disabled={busy || !saved?.writable} onClick={resetConfiguration}>清除已保存配置</button>

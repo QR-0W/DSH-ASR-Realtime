@@ -77,6 +77,19 @@ it('脏表单保留基础版本号；保存时禁止继续编辑字段', async (
   expect(renderer!.root.findByProps({ 'aria-label': '识别模型' }).props.value).toBe('my-model')
 })
 
+it('设置页可单独关闭实时字幕并保存', async () => {
+  const slots = await components()
+  mocks.save.mockImplementation(async (form: any) => ({ ...form, configured: true, writable: true, revision: 1 }))
+  await act(async () => { renderer = create(createElement(slots.get('settings.plugins.tab'))) })
+  const toggle = () => renderer!.root.findByProps({ 'aria-label': '显示实时字幕' })
+  expect(toggle().props.checked).toBe(true)
+  act(() => toggle().props.onChange({ target: { checked: false } }))
+  expect(toggle().props.checked).toBe(false)
+  await act(async () => button('保存').props.onClick())
+  expect(mocks.save.mock.calls[0][0].showLiveCaption).toBe(false)
+  expect(toggle().props.checked).toBe(false)
+})
+
 it('自己的下载设置自动保存可以推进基础版本，同时保留其他未保存编辑', async () => {
   vi.useFakeTimers()
   const slots = await components()

@@ -26,6 +26,12 @@ it('npm 镜像按 registry 路径查询和下载，迁移旧 GitHub 代理配置
   const mirrored = { ...manifest, dist: { ...manifest.dist, tarball: 'https://mirror.example/proxy/dsh-listener/-/dsh-listener-0.5.0.tgz' } }
   expect((await latestRelease(vi.fn(async () => ({ ok: true, json: async () => mirrored })) as any, source)).version).toBe('0.5.0')
 })
+it('旧设置缺少实时字幕开关时继续默认显示', () => {
+  const old: Record<string, unknown> = { ...defaults }
+  delete old.showLiveCaption
+  expect(validatePreferences(old)).toEqual(defaults)
+  expect(() => validatePreferences({ ...defaults, showLiveCaption: 'yes' })).toThrow()
+})
 it('旧设置默认官方下载，镜像前缀验证拒绝无效或带凭据的网址', () => {
   const { updateSource, mirrorUrl, ...old } = defaults
   expect(validatePreferences(old)).toEqual(defaults)

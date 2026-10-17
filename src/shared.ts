@@ -3,7 +3,7 @@ export const DEFAULT_MODEL = 'qwen-audio-3.1-asr-flash-streaming'
 export const SAMPLE_RATE = 16000
 export const MAX_AUDIO_BYTES = 16000 * 2 * 120
 export const MAX_BUFFER_BYTES = 16000 * 2 * 15
-export const VERSION = '0.4.1'
+export const VERSION = '0.4.2'
 export interface UpdateSource {
   updateSource: 'official' | 'mirror'
   mirrorUrl: string
@@ -20,6 +20,7 @@ export interface Preferences extends UpdateSource {
   hotkey: string
   mode: 'hold' | 'toggle'
   autoSend: boolean
+  showLiveCaption: boolean
 }
 export interface SettingsView extends Preferences {
   configured: boolean
@@ -27,7 +28,7 @@ export interface SettingsView extends Preferences {
   revision: number
 }
 export const defaults: Preferences = {
-  model: DEFAULT_MODEL, region: 'beijing', workspaceId: '', hotkey: 'AltRight', mode: 'hold', autoSend: false,
+  model: DEFAULT_MODEL, region: 'beijing', workspaceId: '', hotkey: 'AltRight', mode: 'hold', autoSend: false, showLiveCaption: true,
   updateSource: 'official', mirrorUrl: 'https://registry.npmmirror.com',
 }
 
@@ -58,8 +59,10 @@ export function validatePreferences(input: unknown): Preferences {
   if (typeof p.hotkey !== 'string' || !/^(?:(?:Control|Shift|Alt|Meta)\+)*(?:AltRight|AltLeft|ControlRight|ControlLeft|ShiftRight|ShiftLeft|MetaRight|MetaLeft|Key[A-Z]|Digit[0-9]|F(?:[1-9]|1[0-2])|Space)$/.test(p.hotkey)) throw new Error('快捷键无效')
   if (p.mode !== 'hold' && p.mode !== 'toggle') throw new Error('录音模式无效')
   if (typeof p.autoSend !== 'boolean') throw new Error('自动发送设置无效')
+  const showLiveCaption = p.showLiveCaption ?? defaults.showLiveCaption
+  if (typeof showLiveCaption !== 'boolean') throw new Error('实时字幕设置无效')
   const source = validateUpdateSource({ updateSource: p.updateSource as UpdateSource['updateSource'], mirrorUrl: (p.mirrorUrl ?? defaults.mirrorUrl) as string }, false)
-  return { model: p.model, region: p.region, workspaceId: p.workspaceId, hotkey: p.hotkey, mode: p.mode, autoSend: p.autoSend, ...source }
+  return { model: p.model, region: p.region, workspaceId: p.workspaceId, hotkey: p.hotkey, mode: p.mode, autoSend: p.autoSend, showLiveCaption, ...source }
 }
 export function upstreamUrl(p: Preferences): string {
   const region = p.region === 'beijing' ? 'cn-beijing' : 'ap-southeast-1'

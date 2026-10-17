@@ -19,6 +19,7 @@ export const Config = z.object({
   hotkey: z.string().default('AltRight').volatile(),
   mode: z.union(['hold', 'toggle']).default('hold').volatile(),
   autoSend: z.boolean().default(false).volatile(),
+  showLiveCaption: z.boolean().default(defaults.showLiveCaption).volatile(),
   updateSource: z.union(['official', 'mirror']).default('official').volatile(),
   mirrorUrl: z.string().default(defaults.mirrorUrl).volatile(),
 })
