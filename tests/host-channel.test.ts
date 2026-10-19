@@ -4,7 +4,7 @@ import { expect, it, vi } from 'vitest'
 import { apply } from '../src/index.ts'
 import { defaults } from '../src/shared.ts'
 
-it('下载设置独立保存；清除配置恢复默认并移除密钥，拒绝过期或混合请求', async () => {
+it('旧更新请求被拒绝且不挂载管理端点；普通保存与清除遵守版本和密钥边界', async () => {
   const effects: (() => void)[] = [], routes = new Map<string, any>()
   let value = { ...defaults, model: 'keep-model', autoSend: true }, revision = 0
   let configured = true
@@ -24,10 +24,15 @@ it('下载设置独立保存；清除配置恢复默认并移除密钥，拒绝�
     const response = await fetch(`http://127.0.0.1:${(server.address() as { port: number }).port}/dsh-listener/config`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ updateDownload: { updateSource: 'mirror', mirrorUrl: '' }, revision: 0 }),
     })
-    expect(response.status).toBe(200)
-    expect(value).toEqual({ ...defaults, model: 'keep-model', autoSend: true, updateSource: 'mirror', mirrorUrl: '' })
+    expect(response.status).toBe(400)
+    expect(routes.has('/dsh-listener/manage')).toBe(false)
+    expect(value).toEqual({ ...defaults, model: 'keep-model', autoSend: true })
+    expect(revision).toBe(0)
     expect(credentials.set).not.toHaveBeenCalled(); expect(credentials.unset).not.toHaveBeenCalled()
     const url = `http://127.0.0.1:${(server.address() as { port: number }).port}/dsh-listener/config`
+    const saved = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ preferences: { ...value, model: 'changed-model' }, revision: 0 }) })
+    expect(saved.status).toBe(200)
+    expect(value.model).toBe('changed-model')
     const reset = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reset: true, revision: 1 }) })
     expect(reset.status).toBe(200); expect(value).toEqual(defaults)
     expect((await reset.json()).configured).toBe(false); expect(credentials.unset).toHaveBeenCalledOnce()

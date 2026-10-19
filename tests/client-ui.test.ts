@@ -5,12 +5,12 @@ import { defaults } from '../src/shared.ts'
 
 const mocks = vi.hoisted(() => ({
   snapshot: null as any, listeners: new Set<() => void>(), final: null as any,
-  save: vi.fn(), saveDownload: vi.fn(), start: vi.fn(), refresh: vi.fn(),
+  save: vi.fn(), start: vi.fn(), finish: vi.fn(), refresh: vi.fn(),
 }))
 vi.mock('../src/client/settings.ts', () => ({ settings: {
   getSnapshot: () => mocks.snapshot,
   subscribe: (fn: () => void) => { mocks.listeners.add(fn); return () => mocks.listeners.delete(fn) },
-  refresh: mocks.refresh, save: mocks.save, saveDownload: mocks.saveDownload,
+  refresh: mocks.refresh, save: mocks.save,
 } }))
 vi.mock('../src/client/session.ts', () => ({ VoiceSession: class {
   constructor(final: (text: string) => void) { mocks.final = final }
@@ -19,7 +19,7 @@ vi.mock('../src/client/session.ts', () => ({ VoiceSession: class {
   active = () => false
   busy = () => false
   start = mocks.start
-  finish = vi.fn()
+  finish = mocks.finish
   cancel = vi.fn()
 } }))
 const idle = { phase: 'idle', preview: '', message: '' }
@@ -44,7 +44,7 @@ it('未追加文字在关闭提示和切换会话后可恢复，并阻止下一�
   const slots = await components()
   const props = { sessionId: 'pending-test', useInput: () => ({ draft: '', draftRev: 0, phase: 'plain', occurrences: [] }), inputActions: { insertText: () => false, submit: vi.fn() } }
   await act(async () => { renderer = create(createElement(slots.get('conversation.input.right'), props)) })
-  act(() => mocks.final('不能丢失的文字'))
+  act(() => mocks.final('不能丢失的文字', { finalized: true, interrupted: false }))
   act(() => button('关闭').props.onClick())
   expect(button('恢复识别文字')).toBeDefined()
   act(() => renderer!.root.findByProps({ 'aria-label': '开始语音输入' }).props.onClick())
@@ -90,22 +90,80 @@ it('设置页可单独关闭实时字幕并保存', async () => {
   expect(toggle().props.checked).toBe(false)
 })
 
-it('自己的下载设置自动保存可以推进基础版本，同时保留其他未保存编辑', async () => {
-  vi.useFakeTimers()
+it.each([
+  { finalized: true, interrupted: true, sends: 0 },
+  { finalized: false, interrupted: false, sends: 0 },
+  { finalized: true, interrupted: false, sends: 1 },
+])('只有完整且主动停止的转写可以自动发送: %o', async ({ sends, ...meta }) => {
   const slots = await components()
-  mocks.saveDownload.mockImplementation(async (source: any) => {
-    mocks.snapshot = { ...mocks.snapshot, ...source, revision: 1 }
-    for (const fn of mocks.listeners) fn()
-    return mocks.snapshot
-  })
-  mocks.save.mockImplementation(async (form: any) => ({ ...form, revision: 2, configured: true, writable: true }))
+  mocks.snapshot = { ...mocks.snapshot, autoSend: true }
+  const actions = { insertText: vi.fn(() => true), submit: vi.fn() }
+  const props = { sessionId: `send-${meta.finalized}-${meta.interrupted}`, useInput: () => ({ draft: '', draftRev: 0, phase: 'plain', occurrences: [] }), inputActions: actions }
+  await act(async () => { renderer = create(createElement(slots.get('conversation.input.right'), props)) })
+  act(() => renderer!.root.findByProps({ 'aria-label': '开始语音输入' }).props.onClick())
+  act(() => mocks.final('安全保留', meta))
+  expect(actions.insertText).toHaveBeenCalledOnce()
+  expect(actions.submit).toHaveBeenCalledTimes(sends)
+})
+
+it('原会话重挂载后仍能订阅旧实例迟到的最终文字，不写入其他会话', async () => {
+  const slots = await components()
+  const actions = { insertText: vi.fn(() => true), submit: vi.fn() }
+  const props = { sessionId: 'late-original', useInput: () => ({ draft: '', draftRev: 0, phase: 'plain', occurrences: [] }), inputActions: actions }
+  await act(async () => { renderer = create(createElement(slots.get('conversation.input.right'), props)) })
+  const originalFinal = mocks.final
+  act(() => renderer!.unmount())
+  await act(async () => { renderer = create(createElement(slots.get('conversation.input.right'), { ...props, sessionId: 'late-other' })) })
+  act(() => originalFinal('会话专属文字', { finalized: true, interrupted: true }))
+  expect(actions.insertText).not.toHaveBeenCalled()
+  expect(renderer!.root.findAllByType('button').some(node => node.children.includes('恢复识别文字'))).toBe(false)
+  act(() => renderer!.unmount())
+  await act(async () => { renderer = create(createElement(slots.get('conversation.input.right'), props)) })
+  expect(button('恢复识别文字')).toBeDefined()
+  act(() => button('恢复识别文字').props.onClick())
+  act(() => button('丢弃识别文字').props.onClick())
+  // Remount first, then deliver a later callback into the new subscription.
+  const secondFinal = mocks.final
+  act(() => renderer!.unmount())
+  await act(async () => { renderer = create(createElement(slots.get('conversation.input.right'), props)) })
+  act(() => secondFinal('更晚返回的文字', { finalized: false, interrupted: true }))
+  expect(button('恢复识别文字')).toBeDefined()
+  expect(actions.insertText).not.toHaveBeenCalled()
+  act(() => button('恢复识别文字').props.onClick())
+  act(() => button('丢弃识别文字').props.onClick())
+})
+
+it('失焦、隐藏和外部点击只中断保留，字幕内选择文字与原点击均不被吞掉', async () => {
+  const slots = await components()
+  class FakeElement { constructor(readonly caption = false) {} closest() { return this.caption ? this : null } }
+  vi.stubGlobal('Element', FakeElement)
+  const props = { sessionId: 'focus-boundaries', useInput: () => ({ draft: '', draftRev: 0, phase: 'plain', occurrences: [] }), inputActions: { insertText: vi.fn(), submit: vi.fn() } }
+  await act(async () => { renderer = create(createElement(slots.get('conversation.input.right'), props)) })
+  const docEvents = (document.addEventListener as any).mock.calls
+  const outside = docEvents.find(([name]: any) => name === 'pointerdown')[1]
+  const visibility = docEvents.find(([name]: any) => name === 'visibilitychange')[1]
+  const blur = (window.addEventListener as any).mock.calls.find(([name]: any) => name === 'blur')[1]
+  const preventDefault = vi.fn()
+  outside({ target: new FakeElement(true), preventDefault })
+  expect(mocks.finish).not.toHaveBeenCalled()
+  outside({ target: new FakeElement(), preventDefault })
+  blur()
+  Object.defineProperty(document, 'hidden', { value: true })
+  visibility()
+  expect(mocks.finish.mock.calls).toEqual([[true], [true], [true]])
+  expect(preventDefault).not.toHaveBeenCalled()
+})
+
+it('展示品牌版本与手动 Releases 链接，不提供更新检查入口', async () => {
+  const slots = await components()
   await act(async () => { renderer = create(createElement(slots.get('settings.plugins.tab'))) })
-  act(() => renderer!.root.findByProps({ 'aria-label': '识别模型' }).props.onChange({ target: { value: 'my-model' } }))
-  act(() => renderer!.root.findByProps({ id: 'listener-update-source' }).props.onChange({ target: { value: 'mirror' } }))
-  await act(async () => { await vi.advanceTimersByTimeAsync(500) })
-  expect(mocks.saveDownload).toHaveBeenCalledOnce()
-  expect(renderer!.root.findByProps({ 'aria-label': '识别模型' }).props.value).toBe('my-model')
-  await act(async () => button('保存').props.onClick())
-  expect(mocks.save.mock.calls[0][1]).toBe(1)
-  expect(mocks.save.mock.calls[0][0].model).toBe('my-model')
+  expect(renderer!.root.findByType('h2').children.join('')).toBe('DSH-ASR-Realtime')
+  expect(renderer!.root.findAllByType('p').some(node => node.children.join('').includes('v0.5.0'))).toBe(true)
+  const link = renderer!.root.findByProps({ href: 'https://github.com/QR-0W/DSH-ASR-Realtime/releases' })
+  expect(link.children.join('')).toBe('GitHub Releases')
+  expect(link.props.target).toBe('_blank')
+  expect(link.props.rel).toContain('noopener')
+  const labels = renderer!.root.findAllByType('button').map(node => node.children.join(''))
+  expect(labels).not.toContain('检查更新')
+  expect(labels).not.toContain('更新')
 })

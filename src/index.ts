@@ -6,11 +6,11 @@ import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type {} from '@deepseek-ai/dsh-settings'
 import { readFile } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { BASE, defaults, validatePreferences, validateUpdateSource, type Preferences, type SettingsView } from './shared.ts'
+import { BASE, defaults, validatePreferences, type Preferences, type SettingsView } from './shared.ts'
 import { mountHttpChannel } from './host/http-channel.ts'
-import { mountManagement } from './host/management.ts'
 
-export const name = 'dsh-listener'
+export const name = 'dsh-asr-realtime'
+const settingsId = 'dsh-listener'
 export const inject = ['webServer', 'connection', 'credentials', 'settings']
 export const Config = z.object({
   model: z.string().default(defaults.model).volatile(),
@@ -20,8 +20,6 @@ export const Config = z.object({
   mode: z.union(['hold', 'toggle']).default('hold').volatile(),
   autoSend: z.boolean().default(false).volatile(),
   showLiveCaption: z.boolean().default(defaults.showLiveCaption).volatile(),
-  updateSource: z.union(['official', 'mirror']).default('official').volatile(),
-  mirrorUrl: z.string().default(defaults.mirrorUrl).volatile(),
 })
 const keyRef = credentialRef('DSH_LISTENER_API_KEY')
 function json(res: ServerResponse, status: number, value: unknown): void {
@@ -42,17 +40,15 @@ async function body(req: IncomingMessage): Promise<any> {
 /** Uses the same Host/Origin fence and browser authentication as Harness /api. */
 export function apply(ctx: Context, initial: Preferences = defaults): void {
   let writes = Promise.resolve()
-  const descriptor = () => ctx.settings.describe().find(s => s.ns === name)
+  const descriptor = () => ctx.settings.describe().find(s => s.ns === settingsId)
   const preferences = (): Preferences => validatePreferences(descriptor()?.value ?? initial)
   const view = async (): Promise<SettingsView> => ({ ...preferences(),
     configured: (await ctx.credentials.describe(keyRef)).configured,
     writable: ctx.settings.writable, revision: descriptor()?.revision ?? 0,
   })
   ctx.effect(() => ctx.settings.configure({ auto: false }))
-  let updating = false
-  const channel = mountHttpChannel(ctx, preferences, keyRef, undefined, () => updating)
+  const channel = mountHttpChannel(ctx, preferences, keyRef)
   ctx.effect(() => channel.dispose)
-  ctx.effect(() => mountManagement(ctx, channel.active, undefined, undefined, undefined, value => { updating = value }))
 
   ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: `${BASE}/config`, handler: async (req, res) => {
     const admission = ctx.connection.admit(req)
@@ -64,11 +60,9 @@ export function apply(ctx: Context, initial: Preferences = defaults): void {
       const request = await body(req)
       const reset = request?.reset === true
       if (request.reset !== undefined && typeof request.reset !== 'boolean') throw new Error('清除操作无效')
-      const downloadOnly = request?.updateDownload !== undefined
-      const source = downloadOnly ? validateUpdateSource(request.updateDownload, false) : undefined
-      const next = reset ? defaults : downloadOnly ? undefined : validatePreferences(request?.preferences)
-      if (reset && (downloadOnly || request.apiKey !== undefined || request.clearKey !== undefined)) throw new Error('清除不能与保存同时进行')
-      if (downloadOnly && (request.apiKey !== undefined || request.clearKey !== undefined)) throw new Error('下载设置不能修改密钥')
+      if (request?.updateDownload !== undefined) throw new Error('插件已移除内置更新，请通过 GitHub 发布页更新')
+      const next = reset ? defaults : validatePreferences(request?.preferences)
+      if (reset && (request.apiKey !== undefined || request.clearKey !== undefined)) throw new Error('清除不能与保存同时进行')
       if (!Number.isInteger(request?.revision) || request.revision < 0) throw new Error('设置版本无效，请刷新后重试')
       if (request.apiKey !== undefined && (typeof request.apiKey !== 'string' || request.apiKey.length > 2048 || !request.apiKey.trim())) throw new Error('API Key 无效')
       if (request.clearKey !== undefined && typeof request.clearKey !== 'boolean') throw new Error('密钥操作无效')
@@ -80,7 +74,7 @@ export function apply(ctx: Context, initial: Preferences = defaults): void {
         // Credentials are stored by Harness, never in the plugin profile or response.
         if (request.apiKey !== undefined) await ctx.credentials.set(keyRef, request.apiKey.trim())
         if (reset || request.clearKey === true) await ctx.credentials.unset(keyRef)
-        await ctx.settings.update(name, downloadOnly ? validatePreferences({ ...preferences(), ...source }) : next!, request.revision)
+        await ctx.settings.update(settingsId, next, request.revision)
       })
       writes = write.catch(() => undefined)
       await write

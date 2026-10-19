@@ -15,7 +15,7 @@ function reply(res: ServerResponse, status: number, value: unknown) {
 }
 
 /** Ordered binary HTTP uploads and bounded long polls work without Desktop WS forwarding. */
-export function mountHttpChannel(ctx: Context, preferences: () => Preferences, keyRef: CredentialRef, factory: TaskFactory = (p, k, emit) => new BailianTask(p, k, emit), updating = () => false) {
+export function mountHttpChannel(ctx: Context, preferences: () => Preferences, keyRef: CredentialRef, factory: TaskFactory = (p, k, emit) => new BailianTask(p, k, emit)) {
   const entries = new Map<string, Entry>()
   let creating = 0, disposed = false
   const active = () => creating + [...entries.values()].filter(e => !e.ended).length
@@ -32,14 +32,13 @@ export function mountHttpChannel(ctx: Context, preferences: () => Preferences, k
     const action = url.searchParams.get('action'), id = url.searchParams.get('id') ?? ''
     try {
       if (req.method === 'POST' && action === 'start') {
-        if (updating()) { reply(res, 503, { error: '语音插件正在更新，请稍后重试' }); return }
         if (disposed || active() >= 4 || entries.size >= 64) { reply(res, 503, { error: '语音通道忙，请稍后重试' }); return }
         creating++
         try {
           const key = await ctx.credentials.resolve(keyRef)
           if (res.destroyed) return
           if (!key) { reply(res, 400, { error: '尚未配置百炼 API Key' }); return }
-          if (disposed) { reply(res, 503, { error: '语音插件正在更新' }); return }
+          if (disposed) { reply(res, 503, { error: '语音插件已停止，请刷新页面' }); return }
           const id = randomUUID(), entry: Entry = { events: [], seq: 0, ended: false, touched: Date.now(), wake: new Set() }
           entries.set(id, entry)
           res.once('close', () => { if (!res.writableFinished) remove(id, entry) })

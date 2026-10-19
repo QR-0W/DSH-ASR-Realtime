@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import { defaults } from '../src/shared.ts'
 
-it('下载设置使用队列版本，手动表单保留自己的版本以检测冲突', async () => {
+it('保存队列保留每份表单的版本号，拒绝并发旧版本而不覆盖配置', async () => {
   vi.resetModules()
   const { settings } = await import('../src/client/settings.ts')
   let revision = 0
@@ -17,12 +17,12 @@ it('下载设置使用队列版本，手动表单保留自己的版本以检测�
   vi.stubGlobal('fetch', fetcher)
   try {
     await settings.refresh()
-    const auto = settings.saveDownload({ updateSource: 'mirror', mirrorUrl: 'https://mirror.example' })
+    const first = settings.save({ ...defaults, model: 'first-model' }, 0)
     const manual = settings.save({ ...defaults, model: 'another-model' }, 0)
-    await auto
+    await first
     await expect(manual).rejects.toThrow('conflict')
-    expect(calls[0]).toEqual({ updateDownload: { updateSource: 'mirror', mirrorUrl: 'https://mirror.example' }, revision: 0 })
-    expect(calls[0]).not.toHaveProperty('apiKey'); expect(calls[0]).not.toHaveProperty('preferences')
+    expect(calls[0]).toEqual({ preferences: { ...defaults, model: 'first-model' }, revision: 0 })
+    expect(calls[0]).not.toHaveProperty('apiKey'); expect(calls[0]).not.toHaveProperty('updateDownload')
     expect(calls[1].revision).toBe(0)
     await settings.save({ ...defaults, model: 'another-model' }, 1)
     expect(calls[2].revision).toBe(1); expect(calls[2].preferences.model).toBe('another-model')

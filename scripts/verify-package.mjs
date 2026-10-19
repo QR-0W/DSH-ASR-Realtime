@@ -12,15 +12,18 @@ for (let offset = 0; offset + 512 <= tar.length;) {
   files.set(name, tar.subarray(offset + 512, offset + 512 + size))
   offset += 512 + Math.ceil(size / 512) * 512
 }
-for (const name of ['lib/index.js', 'lib/client.js', 'lib/pcm-worklet.js', 'cordis.patch.yml', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'README.md', 'package.json']) {
+for (const name of ['lib/index.js', 'lib/client.js', 'lib/pcm-worklet.js', 'cordis.patch.yml', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'README.md', 'README.zh-CN.md', 'package.json', 'icon.svg', 'locale/en.json', 'locale/zh.json']) {
   assert.ok(files.get(`package/${name}`)?.length, `Missing package file: ${name}`)
 }
 assert.match(files.get('package/lib/client.js').toString(), /window\.__ModuleLoader__\.load/)
 assert.match(files.get('package/lib/pcm-worklet.js').toString(), /registerProcessor/)
 const manifest = JSON.parse(files.get('package/package.json').toString())
-assert.equal(manifest.name, 'dsh-listener', 'Plugin package must use its intended name')
-assert.match(files.get('package/cordis.patch.yml').toString(), /name: dsh-listener/)
-assert.match(files.get('package/lib/client.js').toString(), /id: "dsh-listener"/)
+assert.equal(manifest.name, 'dsh-asr-realtime', 'Plugin package must use its intended name')
+assert.match(files.get('package/cordis.patch.yml').toString(), /name: dsh-asr-realtime/)
+assert.match(files.get('package/lib/client.js').toString(), /id: "dsh-asr-realtime"/)
+assert.equal(manifest.private, true)
+assert.equal(manifest.engines.dsh, '0.2.1-rc.1 || 0.2.1-rc.2')
+for (const name of ['lib/index.js', 'lib/client.js']) assert.doesNotMatch(files.get(`package/${name}`).toString(), /registry\.npmjs|registry\.npmmirror|installBundle|saveDownload|\/manage\?action=/, `Removed updater found in ${name}`)
 for (const [name, bytes] of files) {
   assert.doesNotMatch(bytes.toString(), /speeker/i, `Old plugin name remains in ${name}`)
 }

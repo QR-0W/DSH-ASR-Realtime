@@ -1,4 +1,4 @@
-import { BASE, validateUpdateSource, type UpdateProgress, type UpdateSource, type SettingsView, type Preferences } from '../shared.ts'
+import { BASE, type SettingsView, type Preferences } from '../shared.ts'
 let snapshot: SettingsView | null = null
 const listeners = new Set<() => void>()
 let writes = Promise.resolve<unknown>(undefined)
@@ -24,19 +24,6 @@ export const settings = {
   getSnapshot: () => snapshot,
   subscribe: (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn) } },
   refresh: () => request(),
-  progress: async (signal: AbortSignal): Promise<UpdateProgress> => {
-    const response = await fetch(`${BASE}/manage?action=progress`, { credentials: 'same-origin', signal })
-    if (!response.ok) throw new Error('无法读取更新进度')
-    return response.json()
-  },
-  manage: async (action: 'check' | 'update', source?: UpdateSource): Promise<{ current?: string; latest?: string; available?: boolean; message?: string; application?: string }> => {
-    const query = new URLSearchParams({ action, ...validateUpdateSource(source ?? {}) })
-    const response = await fetch(`${BASE}/manage?${query}`, { method: 'POST', credentials: 'same-origin' })
-    const result = await response.json()
-    if (!response.ok) throw new Error(result.error ?? '插件管理失败')
-    return result
-  },
-  saveDownload: (source: UpdateSource) => write({ updateDownload: validateUpdateSource(source, false) }),
   reset: () => write({ reset: true }),
   save: (preferences: Preferences, revision: number, apiKey?: string) => write({ preferences, ...(apiKey ? { apiKey } : {}) }, revision),
 }

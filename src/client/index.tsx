@@ -5,31 +5,29 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { InputState } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { defaults, validatePreferences, validateUpdateSource, workspaceFromHost, VERSION, type SettingsView, type UpdateSource, type UpdateProgress, type Preferences } from '../shared.ts'
+import { defaults, validatePreferences, workspaceFromHost, VERSION, type SettingsView, type Preferences } from '../shared.ts'
 import { settings } from './settings.ts'
 import { HotkeyCapture, HotkeyGesture, matches, releasesBinding } from './hotkey.ts'
 import { appendTranscript } from './draft.ts'
 import { VoiceSession } from './session.ts'
+import { getTranscript, setTranscript, clearTranscript, subscribeTranscript } from './transcripts.ts'
 import { captionStyle, LiveCaption, registerCaptionLocale } from './caption.tsx'
 
 export const inject = ['slots', 'locale']
 const sessions = new Set<VoiceSession>()
 let owner: VoiceSession | undefined
-const pendingTranscripts = new Map<string, string>()
 const style = `
-.listener-button{border:0;border-radius:8px;padding:7px;display:inline-flex;align-items:center;gap:5px;color:var(--dsw-alias-label-secondary);background:transparent;cursor:pointer;font:inherit}
-.listener-button:hover{background:var(--dsw-alias-bg-layer-2)}.listener-button:disabled{opacity:.5;cursor:default}
+.listener-button{border:0;border-radius:var(--sys-shape-corner-small,8px);padding:7px;display:inline-flex;align-items:center;gap:5px;color:var(--dsw-alias-label-secondary);background:transparent;cursor:pointer;font:inherit;transition:transform .28s cubic-bezier(.2,1.5,.4,1)}
+.listener-button:hover{background:var(--dsw-alias-bg-layer-2)}.listener-button:active{transform:scale(.92)}.listener-button:disabled{opacity:.5;cursor:default}
+@media(prefers-reduced-motion:reduce){.listener-button{transition:none}.listener-button:active{transform:none}}
 .listener-button[data-recording=true]{color:var(--dsw-alias-state-success-primary);background:var(--dsw-alias-bg-layer-2)}.listener-button:focus-visible,.listener-settings input:focus-visible,.listener-settings select:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
 .listener-control{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.listener-settings{max-width:480px;padding:12px;color:inherit;font:inherit;font-size:13px}.listener-settings h2{margin:0 0 6px;font-size:16px}.listener-settings p{line-height:1.5;opacity:.8;margin:8px 0}.listener-settings details{margin:10px 0;font-size:12px;opacity:.85}
+.listener-settings{max-width:480px;padding:12px;color:inherit;font:inherit;font-size:13px}.listener-settings h2{margin:0 0 6px;font-size:16px}.listener-settings p{line-height:1.5;opacity:.8;margin:8px 0}.listener-settings a{color:var(--dsw-alias-brand-primary);text-underline-offset:2px}
 .listener-field{display:grid;grid-template-columns:135px 1fr;gap:12px;align-items:center;margin:16px 0}.listener-field input:not([type=checkbox]),.listener-field select{box-sizing:border-box;width:100%;padding:9px 10px;color:inherit;background:var(--dsw-alias-bg-layer-2,#8881);border:1px solid #8885;border-radius:7px;font:inherit}.listener-field input[type=checkbox]{width:18px;height:18px;accent-color:#16a34a}
 .listener-actions{display:flex;gap:10px;margin-top:20px}.listener-action{padding:8px 14px;border:1px solid #8885;border-radius:7px;background:transparent;color:inherit;cursor:pointer;font:inherit}.listener-primary{background:#15803d;color:white;border-color:#15803d}.listener-action:disabled{opacity:.5;cursor:default}
 .listener-dialog{padding:0;border:1px solid #8885;border-radius:12px;max-width:min(680px,calc(100vw - 32px));max-height:85vh;color:inherit;background:var(--dsw-alias-bg-layer-1,Canvas);overflow:auto}.listener-dialog::backdrop{background:#0006}.listener-dialog-close{display:flex;justify-content:flex-end;padding:12px 16px 0}
 .listener-settings .listener-field{grid-template-columns:105px 1fr;gap:8px;margin:10px 0}.listener-settings .listener-field input:not([type=checkbox]),.listener-settings .listener-field select{padding:6px 8px;font-size:13px}.listener-settings .listener-action{padding:5px 10px;font-size:13px}.listener-settings .listener-actions{margin-top:12px}.listener-popup{width:min(380px,calc(100vw - 48px));padding:16px;font-size:13px}.listener-popup h2{font-size:16px;margin:0 0 10px}.listener-popup p{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5}.listener-popup-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
-.listener-progress{width:100%;height:8px;accent-color:#16a34a}
 .listener-shortcut{display:flex;align-items:center;gap:8px}.listener-shortcut input{min-width:0;flex:1}.listener-shortcut button{flex:none}.listener-settings .listener-hint{font-size:12px;margin:5px 0 0}
-.listener-update-controls{display:flex;align-items:center;gap:6px;min-width:0}.listener-update-controls select{flex:1;min-width:80px}.listener-update-controls button{flex:none;white-space:nowrap}
-@media(max-width:420px){.listener-settings .listener-update-field{grid-template-columns:1fr}}
 @media(max-width:500px){.listener-field{grid-template-columns:1fr;gap:6px}.listener-settings{padding:12px}}
 `
 function Mic() {
@@ -39,26 +37,37 @@ function Mic() {
 function VoiceButton({ sessionId, useInput, inputActions, locale }: PropsRuntime<'conversation.input.right'> & { locale: Context['locale'] }) {
   const input = useInput((value: InputState) => value)
   const config = useSyncExternalStore(settings.subscribe, settings.getSnapshot)
-  const latest = useRef({ input, config, inputActions })
-  latest.current = { input, config, inputActions }
+  const latest = useRef({ input, config, inputActions, sessionId })
+  latest.current = { input, config, inputActions, sessionId }
   const start = useRef({ revision: 0, autoSend: false })
   const [notice, setNotice] = useState('')
-  const [pending, setPendingState] = useState(() => pendingTranscripts.get(sessionId) ?? '')
-  const setPending = (text: string) => {
-    if (text) pendingTranscripts.set(sessionId, text)
-    else pendingTranscripts.delete(sessionId)
-    setPendingState(text)
-  }
+  const transcript = useSyncExternalStore(
+    listener => subscribeTranscript(sessionId, listener),
+    () => getTranscript(sessionId),
+    () => getTranscript(sessionId),
+  )
+  const pending = transcript?.text ?? ''
   const [showSettings, setShowSettings] = useState(false)
+  const controlRef = useRef<HTMLDivElement>(null)
   const button = useRef<HTMLButtonElement>(null)
-  const [session] = useState(() => new VoiceSession(text => {
+  const mounted = useRef(false)
+  const [session] = useState(() => new VoiceSession((text, meta) => {
+    setTranscript(sessionId, { text, finalized: meta.finalized, interrupted: meta.interrupted })
     if (owner === session) owner = undefined
+    if (!mounted.current || latest.current.sessionId !== sessionId) return
     const { input, inputActions } = latest.current
-    const result = appendTranscript(inputActions, input, text, start.current.autoSend, start.current.revision)
-    if (result === 'blocked') { setPending(text); setNotice('输入框暂不可编辑，识别文字已保留') }
-    else if (result === 'empty') setNotice('')
-    else if (result === 'edited') setNotice('草稿已编辑，语音已追加，请手动发送')
-    else setNotice(result === 'sent' ? '已提交发送' : '语音已追加')
+    try {
+      const result = appendTranscript(inputActions, input, text, start.current.autoSend && meta.finalized && !meta.interrupted, start.current.revision)
+      if (result === 'blocked') setNotice('输入框暂不可编辑，识别文字已保留')
+      else {
+        clearTranscript(sessionId)
+        if (result === 'empty') setNotice('')
+        else if (result === 'edited') setNotice('草稿已编辑，语音已追加，请手动发送')
+        else setNotice(result === 'sent' ? '已提交发送' : '语音已追加')
+      }
+    } catch {
+      setNotice('识别文字已保留，请手动追加或复制')
+    }
   }))
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot)
   useEffect(() => { if (state.phase === 'error') setNotice(state.message) }, [state.phase, state.message])
@@ -75,6 +84,7 @@ function VoiceButton({ sessionId, useInput, inputActions, locale }: PropsRuntime
     finish: () => { void session.finish() },
   }
   useEffect(() => {
+    mounted.current = true
     sessions.add(session)
     const gesture = new HotkeyGesture({ start: () => operations.current.begin(), finish: () => operations.current.finish(), active: session.active }, () => latest.current.config?.mode ?? 'hold')
     let pressedCode = ''
@@ -93,22 +103,29 @@ function VoiceButton({ sessionId, useInput, inputActions, locale }: PropsRuntime
       if (!pressedCode || !releasesBinding(event.code, pressedCode)) return
       event.preventDefault(); pressedCode = ''; gesture.up()
     }
-    const cancel = () => {
+    const interrupt = () => {
       gesture.reset(); pressedCode = ''
-      if (session.busy()) session.cancel('页面失去焦点，已取消录音')
-      if (owner === session) owner = undefined
+      void session.finish(true)
     }
-    const visibility = () => { if (document.hidden) cancel() }
+    const visibility = () => { if (document.hidden) interrupt() }
+    const outsidePointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (controlRef.current?.contains(target as Node) || (target instanceof Element && target.closest('[data-asr-caption]'))) return
+      interrupt()
+    }
     window.addEventListener('keydown', down); window.addEventListener('keyup', up)
-    window.addEventListener('blur', cancel); document.addEventListener('visibilitychange', visibility)
+    window.addEventListener('blur', interrupt); document.addEventListener('visibilitychange', visibility)
+    document.addEventListener('pointerdown', outsidePointerDown, true)
     return () => {
+      mounted.current = false
       window.removeEventListener('keydown', down); window.removeEventListener('keyup', up)
-      window.removeEventListener('blur', cancel); document.removeEventListener('visibilitychange', visibility)
-      session.cancel(); sessions.delete(session); if (owner === session) owner = undefined
+      window.removeEventListener('blur', interrupt); document.removeEventListener('visibilitychange', visibility)
+      document.removeEventListener('pointerdown', outsidePointerDown, true)
+      void session.finish(true); sessions.delete(session)
     }
   }, [sessionId, session])
   const label = state.phase === 'recording' ? '停止录音' : state.phase === 'requesting' ? '取消麦克风请求' : state.phase === 'finishing' ? '正在识别' : '开始语音输入'
-  return <div className="listener-control">
+  return <div ref={controlRef} className="listener-control">
     <button ref={button} type="button" className="listener-button" aria-label={label} aria-pressed={session.active()} data-recording={state.phase === 'recording'}
       title={config?.configured ? `${label}（${config.hotkey}）${state.preview ? `：${state.preview}` : ''}；右键打开语音输入设置` : '点击配置语音输入'}
       disabled={state.phase === 'finishing' || input.phase !== 'plain'}
@@ -120,8 +137,8 @@ function VoiceButton({ sessionId, useInput, inputActions, locale }: PropsRuntime
     {(notice && !['语音已追加', '已提交发送'].includes(notice)) && <MessageDialog message={notice} onClose={() => setNotice('')} onSettings={() => { setNotice(''); setShowSettings(true) }}>
     {pending && <><p>{pending}</p><button className="listener-action" type="button" onClick={() => {
       const result = appendTranscript(inputActions, latest.current.input, pending, false, 0)
-      if (result !== 'blocked') { setPending(''); setNotice('语音已追加') }
-    }}>追加识别文字</button><button className="listener-action" type="button" onClick={() => { void (navigator.clipboard?.writeText(pending) ?? Promise.reject()).then(() => { setPending(''); setNotice('已复制识别文字') }).catch(() => setNotice('无法复制，请使用追加按钮')) }}>复制</button><button className="listener-action" type="button" onClick={() => { setPending(''); setNotice('') }}>丢弃识别文字</button></>}
+      if (result !== 'blocked') { clearTranscript(sessionId); setNotice('语音已追加') }
+    }}>追加识别文字</button><button className="listener-action" type="button" onClick={() => { void (navigator.clipboard?.writeText(pending) ?? Promise.reject()).then(() => { clearTranscript(sessionId); setNotice('已复制识别文字') }).catch(() => setNotice('无法复制，请使用追加按钮')) }}>复制</button><button className="listener-action" type="button" onClick={() => { clearTranscript(sessionId); setNotice('') }}>丢弃识别文字</button></>}
     </MessageDialog>}
   </div>
 }
@@ -143,25 +160,6 @@ function SettingsDialog({ onClose }: { onClose: () => void }) {
   </dialog>
 }
 
-function UpdateIndicator({ progress }: { progress: UpdateProgress | null }) {
-  if (!progress || progress.phase === 'idle') return null
-  const percent = progress.total ? Math.min(100, progress.received / progress.total * 100) : undefined
-  let value: number | undefined
-  let label: string
-  switch (progress.phase) {
-    case 'checking': label = '正在检查版本…'; break
-    case 'installing': label = '下载完成，正在安装…'; break
-    case 'done': value = 100; label = '更新完成'; break
-    case 'downloading':
-      value = percent
-      label = `已下载 ${(progress.received / 1024).toFixed(1)} KB`
-      if (progress.total) label += ` / ${(progress.total / 1024).toFixed(1)} KB（${Math.floor(percent!)}%）`
-      break
-    default: label = '更新未完成'
-  }
-  return <div aria-live="polite"><progress className="listener-progress" aria-label="更新进度" max={100} value={value}/><p>{label}</p></div>
-}
-
 function VoiceSettings() {
   const saved = useSyncExternalStore(settings.subscribe, settings.getSnapshot)
   const [form, setForm] = useState<Preferences>(defaults)
@@ -171,59 +169,10 @@ function VoiceSettings() {
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
-  const [available, setAvailable] = useState(false)
-  const [latestVersion, setLatestVersion] = useState('')
-  const [managementMessage, setManagementMessage] = useState('')
-  const [updating, setUpdating] = useState(false)
-  const [progress, setProgress] = useState<UpdateProgress | null>(null)
-  const pendingDownload = useRef<UpdateSource | null>(null)
   const dirty = useRef(false)
   const [revision, setRevision] = useState(0)
-  const formBase = useRef<SettingsView | null>(null)
   useEffect(() => { void settings.refresh().catch(error => setError(error.message)) }, [])
-  useEffect(() => () => {
-    if (pendingDownload.current) void settings.saveDownload(pendingDownload.current).catch(() => {})
-  }, [])
-  useEffect(() => { if (saved && !dirty.current) { formBase.current = saved; setRevision(saved.revision); setForm({ ...saved, mirrorUrl: saved.mirrorUrl || defaults.mirrorUrl }) } }, [saved])
-  useEffect(() => {
-    if (!saved || busy || !pendingDownload.current) return
-    if (form.updateSource === saved.updateSource && form.mirrorUrl === saved.mirrorUrl) {
-      pendingDownload.current = null
-      return
-    }
-    if (!saved.writable) return
-    let source
-    try { source = validateUpdateSource(form, false) }
-    catch { pendingDownload.current = null; return }
-    if (source.updateSource === saved.updateSource && source.mirrorUrl === saved.mirrorUrl) {
-      pendingDownload.current = null; return
-    }
-    pendingDownload.current = source
-    let live = true
-    const timer = setTimeout(() => {
-      const before = settings.getSnapshot()
-      void settings.saveDownload(source).then(value => {
-        // Only our own single-field write can advance this form's base revision.
-        if (before && formBase.current?.revision === before.revision && value.revision === before.revision + 1) {
-          formBase.current = value; setRevision(value.revision)
-        }
-        if (pendingDownload.current?.updateSource === source.updateSource && pendingDownload.current.mirrorUrl === source.mirrorUrl) pendingDownload.current = null
-      }).catch(() => { if (live) setError('下载设置未保存，请刷新后重试。') })
-    }, 500)
-    return () => { live = false; clearTimeout(timer) }
-  }, [form.updateSource, form.mirrorUrl, saved, busy])
-  useEffect(() => {
-    if (!updating) return
-    const controller = new AbortController()
-    let timer: ReturnType<typeof setTimeout>
-    const poll = async () => {
-      try { const value = await settings.progress(AbortSignal.any([controller.signal, AbortSignal.timeout(5000)])); if (!controller.signal.aborted) setProgress(value) }
-      catch { /* Progress transport failure must not abort the installation request. */ }
-      if (!controller.signal.aborted) timer = setTimeout(() => { void poll() }, 700)
-    }
-    void poll()
-    return () => { controller.abort(); clearTimeout(timer) }
-  }, [updating])
+  useEffect(() => { if (saved && !dirty.current) { setRevision(saved.revision); setForm({ ...saved }) } }, [saved])
   useEffect(() => {
     if (!capture) return
     const recorder = new HotkeyCapture()
@@ -250,15 +199,10 @@ function VoiceSettings() {
   }, [capture])
   const update = <K extends keyof Preferences>(key: K, value: Preferences[K]) => {
     dirty.current = true
-    if (key === 'updateSource' || key === 'mirrorUrl') {
-      try { pendingDownload.current = validateUpdateSource({ ...form, [key]: value }, false) }
-      catch { pendingDownload.current = null }
-    }
     setForm(p => ({ ...p, [key]: value }))
   }
   const applySavedSettings = (value: SettingsView) => {
     dirty.current = false
-    formBase.current = value
     setForm(value); setRevision(value.revision); setKey('')
   }
   const saveConfiguration = () => {
@@ -268,23 +212,14 @@ function VoiceSettings() {
     }).catch(error => setError(error.message)).finally(() => { setBusy(false); setSaving(false) })
   }
   const resetConfiguration = () => {
-    pendingDownload.current = null
     setBusy(true); setCapture(false); setMessage('')
     void settings.reset().then(value => {
       applySavedSettings(value)
-      setAvailable(false); setProgress(null); setManagementMessage(''); setMessage('已清除保存的配置')
+      setMessage('已清除保存的配置')
     }).catch(error => setError(error.message)).finally(() => setBusy(false))
   }
-  const manage = (action: 'check' | 'update') => {
-    setProgress(action === 'update' ? { phase: 'checking', received: 0 } : null); setUpdating(action === 'update')
-    setBusy(true); setManagementMessage(action === 'check' ? '正在检查更新…' : '正在下载并安装新版，请等待…')
-    void settings.manage(action, form).then(result => {
-      if (action === 'check') { setAvailable(!!result.available); setLatestVersion(result.latest ?? ''); setManagementMessage(result.available ? `发现新版 ${result.latest}` : '当前已是最新版本') }
-      else { setManagementMessage(result.message ?? '操作已完成'); setAvailable(false); setProgress(p => ({ ...p, received: p?.received ?? 0, phase: 'done' })) }
-    }).catch(error => { setManagementMessage(''); setProgress(null); setError(error.message) }).finally(() => { setBusy(false); setUpdating(false) })
-  }
   return <section className="listener-settings" data-listener-settings>
-    <h2>语音输入</h2><p>dsh-listener: 轻量化云端实时识别语音</p>
+    <h2>DSH-ASR-Realtime</h2><p>轻量化云端实时语音识别</p>
     <fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
     <label className="listener-field"><span>API Key</span><input type="password" autoComplete="off" value={key} placeholder={saved?.configured ? '已配置；留空保留原密钥' : '输入百炼 API Key'} onChange={e => { dirty.current = true; setKey(e.target.value) }}/></label>
     <label className="listener-field"><span>地域</span><select value={form.region} onChange={e => update('region', e.target.value as Preferences['region'])}><option value="beijing">北京</option><option value="singapore">新加坡</option></select></label>
@@ -305,17 +240,7 @@ function VoiceSettings() {
       <button type="button" className="listener-action" disabled={busy} onClick={() => { setBusy(true); setCapture(false); void settings.refresh().then(() => { const value = settings.getSnapshot(); if (value) applySavedSettings(value) }).catch(error => setError(error.message)).finally(() => setBusy(false)) }}>刷新</button>
     </div>
     <p role="status">{saved && !saved.writable ? '当前 Harness 配置只读。' : message}</p>
-    <details open><summary>插件管理 · v{VERSION}</summary>
-      <div className="listener-field listener-update-field"><label htmlFor="listener-update-source">更新来源</label><div className="listener-update-controls">
-        <select id="listener-update-source" disabled={busy || !saved?.writable} value={form.updateSource} onChange={e => { update('updateSource', e.target.value as Preferences['updateSource']); setAvailable(false); setManagementMessage('') }}><option value="official">npm 官方</option><option value="mirror">npm 镜像</option></select>
-        <button type="button" className="listener-action" disabled={busy} onClick={() => manage('check')}>检查更新</button>
-        <button type="button" className="listener-action" disabled={busy || !available} onClick={() => manage('update')}>{available ? `更新至 ${latestVersion}` : '更新'}</button>
-      </div></div>
-      {form.updateSource === 'mirror' && <><label className="listener-field"><span>镜像网址</span><input type="url" disabled={busy || !saved?.writable} value={form.mirrorUrl} placeholder="https://registry.npmmirror.com" onChange={e => { update('mirrorUrl', e.target.value); setAvailable(false); setManagementMessage('') }}/></label>
-      </>}
-      <p role="status" aria-label="更新状态">{managementMessage}</p>
-      <UpdateIndicator progress={progress}/>
-    </details>
+    <p className="listener-hint">v{VERSION} · <a href="https://github.com/QR-0W/DSH-ASR-Realtime/releases" target="_blank" rel="noopener noreferrer">GitHub Releases</a></p>
     </fieldset>
     {error && <MessageDialog message={error} onClose={() => setError('')} onSettings={() => setError('')}/>}
   </section>
@@ -336,9 +261,9 @@ export function apply(ctx: Context): void {
     register(options: { name: string; key: string }, render: (props: { view: 'summary' | 'page' }) => import('react').ReactNode): unknown
   }
   bundleSlots.inject('plugins.bundle.config', () => bundleSlots.register({
-    name: 'plugins.bundle.config', key: 'dsh-listener',
+    name: 'plugins.bundle.config', key: 'dsh-asr-realtime',
   }, ({ view }) => view === 'summary' ? null : <VoiceSettings/>))
-  ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({ name: 'settings.plugins.tab', id: 'dsh-listener', order: 65, label: () => '语音输入' }, VoiceSettings))
-  ctx.effect(() => () => { for (const session of sessions) session.cancel(); sessions.clear(); owner = undefined })
+  ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({ name: 'settings.plugins.tab', id: 'dsh-listener', order: 65, label: () => 'DSH-ASR-Realtime' }, VoiceSettings))
+  ctx.effect(() => () => { for (const session of sessions) void session.finish(true); sessions.clear(); owner = undefined })
   void settings.refresh().catch(() => undefined)
 }
