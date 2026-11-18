@@ -22,7 +22,7 @@ assert.equal(manifest.name, 'dsh-asr-realtime', 'Plugin package must use its int
 assert.match(files.get('package/cordis.patch.yml').toString(), /name: dsh-asr-realtime/)
 assert.match(files.get('package/lib/client.js').toString(), /id: "dsh-asr-realtime"/)
 assert.equal(manifest.private, true)
-assert.equal(manifest.engines.dsh, '0.2.1-rc.1 || 0.2.1-rc.2')
+assert.equal(manifest.engines.dsh, '0.2.2-rc.1 || 0.2.2-rc.4')
 for (const name of ['lib/index.js', 'lib/client.js']) assert.doesNotMatch(files.get(`package/${name}`).toString(), /registry\.npmjs|registry\.npmmirror|installBundle|saveDownload|\/manage\?action=/, `Removed updater found in ${name}`)
 for (const [name, bytes] of files) {
   assert.doesNotMatch(bytes.toString(), /speeker/i, `Old plugin name remains in ${name}`)

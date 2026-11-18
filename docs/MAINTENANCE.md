@@ -15,7 +15,7 @@ The project continues work based on [gone1724/dsh-listener](https://github.com/g
 
 ### Compatibility claims
 
-The declared DSH compatibility scope is limited to `0.2.1-rc.1` and `0.2.1-rc.2`. The current maintenance round focuses on `0.2.1-rc.2`. Other DSH versions are not verified and must not be listed as supported.
+The declared DSH compatibility scope is limited to `0.2.2-rc.1` and `0.2.2-rc.4`. The current maintenance round focuses on `0.2.2-rc.4`. Other DSH versions are not verified and must not be listed as supported.
 
 A DSH version may be added to the compatibility table only after the release candidate has passed that version's automated checks and the required Host/Client acceptance. A matching archive or successful build is not evidence of real microphone, GUI, or cloud-service acceptance. Record those results separately. Node.js must satisfy the package's `engines` field.
 
@@ -78,7 +78,7 @@ Retain the MIT copyright and license notices from [gone1724/dsh-listener](https:
 
 ### 兼容声明
 
-声明的 DSH 兼容范围仅限 `0.2.1-rc.1` 和 `0.2.1-rc.2`，本轮维护以 `0.2.1-rc.2` 为主要验收目标。其他 DSH 版本未验证，不得列为受支持版本。
+声明的 DSH 兼容范围仅限 `0.2.2-rc.1` 和 `0.2.2-rc.4`，本轮维护以 `0.2.2-rc.4` 为主要验收目标。其他 DSH 版本未验证，不得列为受支持版本。
 
 只有在某个候选版本通过对应 DSH 版本的自动化检查和所需 Host/Client 验收后，维护者才能把该版本加入兼容表。归档内容相同或构建成功，不能证明真实麦克风、GUI 或云服务验收通过。请分别记录这些结果。Node.js 版本必须满足包的 `engines` 字段。
 

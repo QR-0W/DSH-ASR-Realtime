@@ -30,8 +30,8 @@ Only behavior accepted for a release is part of that release's support claim. Se
 
 | DSH version | Support status |
 | --- | --- |
-| `0.2.1-rc.1` | In the tested compatibility scope |
-| `0.2.1-rc.2` | In the tested compatibility scope; primary target for this maintenance round |
+| `0.2.2-rc.1` | In the tested compatibility scope |
+| `0.2.2-rc.4` | In the tested compatibility scope; primary target for this maintenance round |
 | Other versions | Not verified; no compatibility claim |
 
 The package requires Node.js `^22.19.0 || >=24.0.0`. Compatibility entries are limited to versions exercised by the project checks; successful packaging alone does not establish GUI or microphone acceptance.

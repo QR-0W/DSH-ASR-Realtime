@@ -9,7 +9,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        dsh: [0.2.1-rc.1, 0.2.1-rc.2]
+        dsh: [0.2.2-rc.1, 0.2.2-rc.4]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -39,7 +39,7 @@ jobs:
         with:
           node-version: '24'
       - run: node -e "require('node:assert/strict').equal(process.env.GITHUB_REF_NAME, 'v' + require('./package.json').version)"
-      - run: npm install -g @deepseek-ai/dsh@0.2.1-rc.2 --ignore-scripts
+      - run: npm install -g @deepseek-ai/dsh@0.2.2-rc.4 --ignore-scripts
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm link:runtime
       - run: pnpm build
