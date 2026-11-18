@@ -4,7 +4,10 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const project = dirname(dirname(fileURLToPath(import.meta.url)));
-const root = process.env.DSH_RUNTIME_DIR ?? join(execFileSync('npm', ['root', '-g'], { encoding: 'utf8' }).trim(), '@deepseek-ai/dsh');
+const npmRoot = () => process.platform === 'win32'
+  ? execFileSync('cmd.exe', ['/d', '/c', 'npm root -g'], { encoding: 'utf8' }).trim()
+  : execFileSync('npm', ['root', '-g'], { encoding: 'utf8' }).trim();
+const root = process.env.DSH_RUNTIME_DIR ?? join(npmRoot(), '@deepseek-ai/dsh');
 const runtime = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
 const manifest = JSON.parse(await readFile(join(project, 'package.json'), 'utf8'));
 if (!manifest.engines.dsh.split('||').map(value => value.trim()).includes(runtime.version)) throw new Error('Unsupported DSH runtime for development links.');
